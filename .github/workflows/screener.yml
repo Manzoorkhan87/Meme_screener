@@ -39,7 +39,19 @@ jobs:
           ARKHAM_API_KEY: ${{ secrets.ARKHAM_API_KEY }}
           RUN_ONCE: "true"
         run: python solana_meme_screener.py
+      - name: Test Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          RESPONSE=$(curl -sS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=🟢 Meme Screener Telegram test — connection is working!")
 
+          echo "$RESPONSE"
+
+          echo "$RESPONSE" | grep -q '"ok":true'
       - name: Save seen-tokens list back to repo
         run: |
           git config user.name "github-actions[bot]"
