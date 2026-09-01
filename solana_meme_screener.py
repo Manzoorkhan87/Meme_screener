@@ -78,12 +78,12 @@ MAX_TOP10_HOLDER_PCT = 40           # top 10 wallets shouldn't own more than thi
 MAX_SINGLE_HOLDER_PCT = 10          # excluding LP/burn address
 MAX_DEV_HOLDING_PCT = 5             # creator/dev wallet specifically must hold <= this
 MIN_MARKET_CAP_USD = 10_000         # below this, too early/illiquid to trust the data
-MIN_VOLUME_24H_USD = 50_000         # 24h trading volume floor — filters out dead/no-interest tokens
-MIN_HOLDER_COUNT = 50               # total distinct holders
+MIN_VOLUME_24H_USD = 20_000         # 24h trading volume floor — filters out dead/no-interest tokens
+MIN_HOLDER_COUNT = 30               # total distinct holders
 REQUIRE_MINT_AUTHORITY_REVOKED = True
 REQUIRE_FREEZE_AUTHORITY_REVOKED = True
 MIN_SCORE_TO_ALERT = 70             # out of 100, see score_token()
-REQUIRE_X_SOCIAL = True             # skip tokens with no linked X/Twitter account
+REQUIRE_X_SOCIAL = False             # skip tokens with no linked X/Twitter account
 
 # Known KOL / smart-money wallet addresses to watch for.
 # There's no reliable free API that labels "this is a KOL wallet" — that
