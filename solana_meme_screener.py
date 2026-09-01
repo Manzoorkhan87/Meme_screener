@@ -83,7 +83,7 @@ MIN_VOLUME_24H_USD = 20_000         # 24h trading volume floor — filters out d
 MIN_HOLDER_COUNT = 30               # total distinct holders
 REQUIRE_MINT_AUTHORITY_REVOKED = True
 REQUIRE_FREEZE_AUTHORITY_REVOKED = True
-MIN_SCORE_TO_ALERT = 70             # out of 100, see score_token()
+MIN_SCORE_TO_ALERT = 30             # out of 100, see score_token()
 REQUIRE_X_SOCIAL = False             # skip tokens with no linked X/Twitter account
 
 # Known KOL / smart-money wallet addresses to watch for.
