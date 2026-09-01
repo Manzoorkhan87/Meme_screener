@@ -106,7 +106,8 @@ ARKHAM_API_KEY = os.environ.get("ARKHAM_API_KEY", "")
 ARKHAM_ADDRESS_URL = "https://api.arkm.com/intelligence/address/{address}"
 ARKHAM_CHECK_TOP_N_HOLDERS = 5      # keep low — this API is rate-limited
 
-DEXSCREENER_SEARCH_URL = "https://api.dexscreener.com/latest/dex/search"
+GECKOTERMINAL_NEW_POOLS_URL = "https://api.geckoterminal.com/api/v2/networks/solana/new_pools"
+DEXSCREENER_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/{addresses}"
 RUGCHECK_REPORT_URL = "https://api.rugcheck.xyz/v1/tokens/{mint}/report"
 
 
@@ -116,20 +117,87 @@ RUGCHECK_REPORT_URL = "https://api.rugcheck.xyz/v1/tokens/{mint}/report"
 
 def get_candidate_pairs():
     """
-    Pull Solana pairs from DexScreener's search endpoint.
-    We search a broad term and filter client-side to Solana chain,
-    since DexScreener doesn't offer a pure "brand new pairs" feed on
-    the free tier. Swap this for Birdeye's /defi/v2/tokens/new_listing
-    endpoint if you have an API key — it's more precise.
+    Discover newly created Solana pools using GeckoTerminal,
+    then fetch richer pair information from DexScreener.
     """
+
     try:
-        resp = requests.get(DEXSCREENER_SEARCH_URL, params={"q": "solana"}, timeout=10)
+        # 1. Get newly created Solana pools
+        resp = requests.get(
+            GECKOTERMINAL_NEW_POOLS_URL,
+            params={
+                "page": 1,
+                "include": "base_token",
+            },
+            timeout=15,
+        )
         resp.raise_for_status()
+
         data = resp.json()
-        pairs = data.get("pairs", []) or []
-        return [p for p in pairs if p.get("chainId") == "solana"]
+        pools = data.get("data", []) or []
+
+        print(f"[discovery] GeckoTerminal returned {len(pools)} new pools")
+
+        token_addresses = []
+
+        for pool in pools:
+            relationships = pool.get("relationships", {}) or {}
+            base_token = relationships.get("base_token", {}) or {}
+            token_data = base_token.get("data", {}) or {}
+
+            token_id = token_data.get("id", "")
+
+            # GeckoTerminal uses IDs like:
+            # solana_TOKEN_ADDRESS
+            if token_id.startswith("solana_"):
+                mint = token_id.replace("solana_", "", 1)
+
+                if mint not in token_addresses:
+                    token_addresses.append(mint)
+
+        if not token_addresses:
+            print("[discovery] No Solana token addresses found")
+            return []
+
+        print(f"[discovery] Found {len(token_addresses)} token addresses")
+
+        # DexScreener allows up to 30 token addresses per request.
+        token_addresses = token_addresses[:30]
+
+        # 2. Get richer market data from DexScreener
+        dex_url = DEXSCREENER_TOKEN_URL.format(
+            addresses=",".join(token_addresses)
+        )
+
+        dex_resp = requests.get(
+            dex_url,
+            timeout=15,
+        )
+        dex_resp.raise_for_status()
+
+        dex_data = dex_resp.json()
+        pairs = dex_data.get("pairs", []) or []
+
+        # Keep only Solana pairs
+        solana_pairs = [
+            pair
+            for pair in pairs
+            if pair.get("chainId") == "solana"
+        ]
+
+        print(
+            f"[discovery] DexScreener returned "
+            f"{len(solana_pairs)} Solana pairs"
+        )
+
+        return solana_pairs
+
     except requests.RequestException as e:
-        print(f"[dexscreener] fetch failed: {e}")
+        print(f"[discovery] fetch failed: {e}")
+        return []
+
+    except Exception as e:
+        print(f"[discovery] unexpected error: {e}")
         return []
 
 
