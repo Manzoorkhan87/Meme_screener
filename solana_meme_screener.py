@@ -64,6 +64,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "PUT_YOUR_CHAT_ID_HERE")
 
 POLL_INTERVAL_SECONDS = 60          # how often to check for new tokens (only matters in loop mode)
 SEEN_TOKENS_FILE = "seen_tokens.json"
+ALERTED_TOKENS_FILE = "alerted_tokens.json"
 
 # Set RUN_ONCE=true (env var) when running under a scheduler like GitHub
 # Actions or cron, where the scheduler itself controls timing — the script
@@ -470,6 +471,17 @@ def load_seen_tokens():
 def save_seen_tokens(seen):
     with open(SEEN_TOKENS_FILE, "w") as f:
         json.dump(list(seen), f)
+       
+def load_alerted_tokens():
+    if os.path.exists(ALERTED_TOKENS_FILE):
+        with open(ALERTED_TOKENS_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
+
+
+def save_alerted_tokens(alerted):
+    with open(ALERTED_TOKENS_FILE, "w") as f:
+        json.dump(list(alerted), f)
 
 
 # ---------------------------------------------------------------------
