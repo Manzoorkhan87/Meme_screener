@@ -427,8 +427,18 @@ def send_telegram_alert(pair, score, reasons, x_link=None, kol_matches=None):
     liquidity = float(pair.get("liquidity", {}).get("usd") or 0)
 
     prefix = "🔥 KOL PRIORITY 🔥\n" if kol_matches else ""
-    verdict = "✅ Looks relatively healthy" if score >= MIN_SCORE_TO_ALERT else "⚠️ Mixed signals"
-    reason_lines = "\n".join(f"• {r}" for r in reasons) if reasons else "• No major red flags found"
+    verdict = (
+        "✅ Looks relatively healthy"
+        if score >= MIN_SCORE_TO_ALERT
+        else "⚠️ Mixed signals"
+    )
+
+    reason_lines = (
+        "\n".join(f"• {r}" for r in reasons)
+        if reasons
+        else "• No major red flags found"
+    )
+
     social_line = f"X: {x_link}\n" if x_link else ""
 
     message = (
@@ -439,11 +449,12 @@ def send_telegram_alert(pair, score, reasons, x_link=None, kol_matches=None):
         f"{social_line}\n"
         f"{reason_lines}\n\n"
         f"[View on DexScreener]({url})\n\n"
-        f"_Screening heuristic only — not financial advice. Verify yourself before entering._"
+        f"_Screening heuristic only — not financial advice. "
+        f"Verify yourself before entering._"
     )
 
     try:
-        requests.post(
+        response = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
             data={
                 "chat_id": TELEGRAM_CHAT_ID,
@@ -453,8 +464,30 @@ def send_telegram_alert(pair, score, reasons, x_link=None, kol_matches=None):
             },
             timeout=10,
         )
+
+        print(
+            f"[telegram] HTTP {response.status_code}: "
+            f"{response.text[:500]}"
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        if result.get("ok"):
+            print(f"[telegram] ✅ Alert sent for {symbol}")
+            return True
+
+        print(f"[telegram] ❌ Telegram rejected message: {result}")
+        return False
+
     except requests.RequestException as e:
-        print(f"[telegram] send failed: {e}")
+        print(f"[telegram] ❌ send failed: {e}")
+        return False
+
+    except Exception as e:
+        print(f"[telegram] ❌ unexpected error: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------
@@ -511,50 +544,115 @@ def print_active_config():
 
 
 def main():
-    if "PUT_YOUR" in TELEGRAM_BOT_TOKEN or "PUT_YOUR" in TELEGRAM_CHAT_ID:
-        print("!! Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID before running (env vars or edit the file).")
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print(
+            "!! TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID "
+            "must be set in the environment."
+        )
         return
 
     print_active_config()
 
     seen = load_seen_tokens()
-    print(f"Starting screener. Already tracking {len(seen)} tokens. Polling every {POLL_INTERVAL_SECONDS}s.")
+    alerted = load_alerted_tokens()
+
+    print(
+        f"Starting screener. "
+        f"Tracking {len(seen)} discovered tokens. "
+        f"Already alerted {len(alerted)} tokens. "
+        f"Polling every {POLL_INTERVAL_SECONDS}s."
+    )
 
     while True:
         pairs = get_candidate_pairs()
         new_count = 0
 
+        print(f"[discovery] Processing {len(pairs)} candidate pairs")
+
         for pair in pairs:
             mint = pair.get("baseToken", {}).get("address")
-            if not mint or mint in seen:
+
+            if not mint:
                 continue
 
-            seen.add(mint)
-            new_count += 1
+            symbol = pair.get("baseToken", {}).get("symbol", "?")
+
+            # Remember that we discovered this token.
+            # This does NOT mean the token is permanently rejected.
+            if mint not in seen:
+                seen.add(mint)
+                new_count += 1
+
+            # Never send the same successful alert twice.
+            if mint in alerted:
+                continue
 
             x_link = get_x_link(pair)
+
+            # X is optional now.
             if REQUIRE_X_SOCIAL and not x_link:
-                symbol = pair.get("baseToken", {}).get("symbol", "?")
-                print(f"{symbol:>10} | skipped (no X/Twitter linked) | {mint}")
+                print(
+                    f"{symbol:>10} | skipped (no X/Twitter linked) | {mint}"
+                )
                 continue
 
+            # Get RugCheck information.
             rug_report = get_rugcheck_report(mint)
+
+            if not rug_report:
+                print(
+                    f"{symbol:>10} | no RugCheck report | {mint}"
+                )
+                continue
+
+            # Check KOL / smart-money involvement.
             kol_matches = check_kol_involvement(rug_report)
-            score, reasons = score_token(pair, rug_report, kol_matches)
+
+            # Calculate score.
+            score, reasons = score_token(
+                pair,
+                rug_report,
+                kol_matches
+            )
 
             flag = " 🔥KOL" if kol_matches else ""
-            print(f"{pair.get('baseToken', {}).get('symbol', '?'):>10} | score={score:3d}{flag} | {mint}")
 
-            if score >= MIN_SCORE_TO_ALERT or (kol_matches and KOL_ALWAYS_ALERTS):
-                send_telegram_alert(pair, score, reasons, x_link, kol_matches)
+            print(
+                f"{symbol:>10} | "
+                f"score={score:3d}"
+                f"{flag} | {mint}"
+            )
 
-            time.sleep(1)  # be polite to RugCheck's rate limit
+            # Send Telegram alert if score is high enough
+            # OR a KOL wallet is involved.
+            if score >= MIN_SCORE_TO_ALERT or (
+                kol_matches and KOL_ALWAYS_ALERTS
+            ):
+                success = send_telegram_alert(
+                    pair,
+                    score,
+                    reasons,
+                    x_link,
+                    kol_matches
+                )
 
+                # IMPORTANT:
+                # Only remember the token as alerted if
+                # Telegram actually accepted the message.
+                if success:
+                    alerted.add(mint)
+                    save_alerted_tokens(alerted)
+
+            time.sleep(1)
+
+        # Save discovered tokens.
         if new_count:
             save_seen_tokens(seen)
 
         if RUN_ONCE:
-            print("RUN_ONCE mode — single pass complete, exiting.")
+            print(
+                "RUN_ONCE mode — single pass complete, exiting."
+            )
             break
 
         time.sleep(POLL_INTERVAL_SECONDS)
