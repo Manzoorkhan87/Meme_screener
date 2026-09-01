@@ -59,8 +59,8 @@ import requests
 # CONFIG
 # ---------------------------------------------------------------------
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "PUT_YOUR_BOT_TOKEN_HERE")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "PUT_YOUR_CHAT_ID_HERE")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8791153578:AAHHAuY2Xi4XG4o_8wOIgtCC9ahrw6J3Qi0")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "397710295")
 
 POLL_INTERVAL_SECONDS = 60          # how often to check for new tokens
 SEEN_TOKENS_FILE = "seen_tokens.json"
